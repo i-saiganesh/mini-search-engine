@@ -15,7 +15,7 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. The Final "OnGo" UI (Lifted Position)
+# 2. The Robust UI
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -31,7 +31,6 @@ HTML_TEMPLATE = """
     <style>
         /* THEME VARIABLES */
         :root {
-            /* Default: Dark Theme */
             --bg-body: #0D1B2A;       
             --bg-card: rgba(27, 38, 59, 0.6); 
             --bg-input: rgba(255, 255, 255, 0.08);
@@ -41,11 +40,9 @@ HTML_TEMPLATE = """
             --accent-blue: #415A77; 
             --shadow: rgba(0,0,0,0.2);
             --border: rgba(255, 255, 255, 0.05);
-            
             --font-main: 'Quicksand', sans-serif;
         }
 
-        /* Light Theme Override */
         [data-theme="light"] {
             --bg-body: #F0F2F5;       
             --bg-card: #FFFFFF; 
@@ -69,21 +66,13 @@ HTML_TEMPLATE = """
             display: flex;
             flex-direction: column;
             align-items: center;
-            
-            /* POSITIONING LOGIC: */
-            /* If searching: Align to top. */
-            /* If home: Center, but use padding-bottom to push it UP. */
+            /* Logic: If query exists, go to top. If not, center. */
             justify-content: {{ 'flex-start' if query else 'center' }}; 
-            
             padding-top: {{ '40px' if query else '0' }};
-            
-            /* CHANGED: Increased from 10vh to 25vh to lift content higher */
-            padding-bottom: {{ '0' if query else '25vh' }};
-            
+            padding-bottom: {{ '50px' if query else '20vh' }};
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
-        /* --- THEME TOGGLE BUTTON --- */
         .theme-toggle {
             position: absolute;
             top: 20px;
@@ -106,7 +95,6 @@ HTML_TEMPLATE = """
         .theme-toggle:hover { transform: scale(1.1); }
         .theme-toggle svg { width: 20px; height: 20px; fill: currentColor; }
 
-        /* --- BRANDING: OnGo --- */
         h1 { 
             font-family: var(--font-main);
             font-size: 3.5rem; 
@@ -123,11 +111,7 @@ HTML_TEMPLATE = """
             transition: transform 0.2s;
         }
         .logo-link:hover { transform: scale(1.02); }
-        
-        .logo-link span { 
-            font-weight: 700; 
-            color: var(--accent-sand); 
-        }
+        .logo-link span { font-weight: 700; color: var(--accent-sand); }
 
         .container {
             width: 90%;
@@ -137,7 +121,6 @@ HTML_TEMPLATE = """
             align-items: center;
         }
 
-        /* --- SEARCH BAR --- */
         .search-wrapper {
             background: var(--bg-input);
             backdrop-filter: blur(12px);
@@ -183,7 +166,6 @@ HTML_TEMPLATE = """
             line-height: 1;
         }
         .clear-btn:hover { color: var(--accent-sand); }
-        
         input:not(:placeholder-shown) + .clear-btn { display: block; }
 
         .search-btn { 
@@ -199,7 +181,6 @@ HTML_TEMPLATE = """
             transition: all 0.2s;
             margin-left: 5px;
         }
-
         .search-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
 
         .stats {
@@ -237,6 +218,7 @@ HTML_TEMPLATE = """
 
         .web-result { border-top: 4px solid var(--accent-sand); }
         .internal-result { border-top: 4px solid var(--accent-blue); }
+        .wiki-result { border-top: 4px solid #fff; } /* Special style for Backup results */
 
         .result-card:hover {
             transform: translateY(-4px);
@@ -297,9 +279,7 @@ HTML_TEMPLATE = """
     </button>
 
     <div class="container">
-        <h1>
-            <a href="/" class="logo-link">On<span>Go</span></a>
-        </h1>
+        <h1><a href="/" class="logo-link">On<span>Go</span></a></h1>
         
         <form action="/search" method="get" style="width: 100%; display: flex; justify-content: center;">
             <div class="search-wrapper">
@@ -310,11 +290,11 @@ HTML_TEMPLATE = """
         </form>
         
         {% if query %}
-            <p class="stats">Found results for "<b>{{ query }}</b>" ({{ time }} ms)</p>
+            <p class="stats">Found results for "<b>{{ query }}</b>" ({{ time }} ms) via {{ source }}</p>
             
             <div class="results">
                 {% for res in results %}
-                    <div class="result-card {{ 'web-result' if res.type == 'web' else 'internal-result' }}">
+                    <div class="result-card {{ 'web-result' if res.type == 'web' else ('wiki-result' if res.type == 'wiki' else 'internal-result') }}">
                         <a href="{{ res.link }}" class="result-link" target="_blank" title="{{ res.title }}">{{ res.title }}</a>
                         <p class="snippet">{{ res.desc }}</p>
                     </div>
@@ -322,7 +302,7 @@ HTML_TEMPLATE = """
                 
                 {% if not results %}
                     <div class="result-card" style="grid-column: 1 / -1; text-align: center;">
-                        <p class="snippet">No results found. Try a different term.</p>
+                        <p class="snippet">No results found. The external engines might be busy. Try again.</p>
                     </div>
                 {% endif %}
             </div>
@@ -330,7 +310,6 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
-        // 1. Theme Logic
         function toggleTheme() {
             const body = document.body;
             const currentTheme = body.getAttribute('data-theme');
@@ -349,28 +328,23 @@ HTML_TEMPLATE = """
                 moonIcon.style.display = 'none';
             }
         }
-
         const savedTheme = localStorage.getItem('theme');
         if (savedTheme === 'light') {
             document.body.setAttribute('data-theme', 'light');
             document.getElementById('sun-icon').style.display = 'block';
             document.getElementById('moon-icon').style.display = 'none';
         }
-
-        // 2. Clear Button Logic
         function toggleClearBtn() {
             const input = document.getElementById('searchInput');
             const btn = document.getElementById('clearBtn');
             btn.style.display = input.value ? 'block' : 'none';
         }
-
         function clearSearch() {
             const input = document.getElementById('searchInput');
             input.value = '';
             input.focus();
             toggleClearBtn();
         }
-
         toggleClearBtn();
     </script>
 </body>
@@ -386,6 +360,7 @@ def search():
     query = request.args.get('q', '').lower().strip()
     start_time = time.time()
     final_results = []
+    source = "Internal DB"
 
     if query:
         # 1. Internal DB
@@ -396,32 +371,63 @@ def search():
                     "desc": ":: Internal Database Match", "type": "internal"
                 })
 
-        # 2. Web Search
+        # 2. Web Search (Primary: DuckDuckGo)
+        web_results = []
         try:
             url = "https://html.duckduckgo.com/html/"
             payload = {'q': query}
-            headers = {"User-Agent": "Mozilla/5.0"}
+            # Enhanced Headers to avoid blocking
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Referer": "https://duckduckgo.com/"
+            }
             response = requests.post(url, data=payload, headers=headers, timeout=5)
-            soup = BeautifulSoup(response.text, 'html.parser')
             
-            count = 0
-            for result in soup.find_all('div', class_='result'):
-                if count >= 9: break 
-                link_tag = result.find('a', class_='result__a')
-                snippet_tag = result.find('a', class_='result__snippet')
-                if link_tag:
-                    final_results.append({
-                        "title": link_tag.get_text(),
-                        "link": link_tag['href'],
-                        "desc": snippet_tag.get_text() if snippet_tag else "Click to read more...",
-                        "type": "web"
-                    })
-                    count += 1
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                count = 0
+                for result in soup.find_all('div', class_='result'):
+                    if count >= 9: break 
+                    link_tag = result.find('a', class_='result__a')
+                    snippet_tag = result.find('a', class_='result__snippet')
+                    if link_tag:
+                        web_results.append({
+                            "title": link_tag.get_text(),
+                            "link": link_tag['href'],
+                            "desc": snippet_tag.get_text() if snippet_tag else "Click to read more...",
+                            "type": "web"
+                        })
+                        count += 1
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"DDG Error: {e}")
+
+        # 3. Fallback (Backup: Wikipedia) if DDG fails or returns 0 results
+        if not web_results:
+            try:
+                # Query Wikipedia OpenSearch API
+                wiki_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=9&namespace=0&format=json"
+                wiki_resp = requests.get(wiki_url, timeout=5).json()
+                # wiki_resp structure: [query, [titles], [descriptions], [links]]
+                if len(wiki_resp) == 4:
+                    titles = wiki_resp[1]
+                    descs = wiki_resp[2]
+                    links = wiki_resp[3]
+                    for i in range(len(titles)):
+                        final_results.append({
+                            "title": titles[i],
+                            "link": links[i],
+                            "desc": descs[i] if descs[i] else "Read full article on Wikipedia...",
+                            "type": "wiki"
+                        })
+                    source = "Wikipedia (Backup)"
+            except Exception as e:
+                print(f"Wiki Error: {e}")
+        else:
+            final_results.extend(web_results)
+            source = "Live Web"
 
     duration = round((time.time() - start_time) * 1000, 2)
-    return render_template_string(HTML_TEMPLATE, query=query, results=final_results, time=duration)
+    return render_template_string(HTML_TEMPLATE, query=query, results=final_results, time=duration, source=source)
 
 if __name__ == '__main__':
     app.run(debug=True)
