@@ -15,7 +15,7 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. The "iOS / Dune" Modern UI
+# 2. The Final "Quicksand/Clean" UI
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -26,20 +26,18 @@ HTML_TEMPLATE = """
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=BBH+Bartle&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;700&display=swap" rel="stylesheet">
 
     <style>
         :root {
             /* Palette */
             --bg-dark: #0D1B2A;       /* Deep Navy */
-            --bg-card: rgba(27, 38, 59, 0.7); /* Glassy Blue */
+            --bg-card: rgba(27, 38, 59, 0.6); /* Glassy Blue */
             --text-main: #E0E1DD;     /* Bone White */
             --accent-sand: #B3AF8F;   /* Gold/Sand */
             --accent-blue: #415A77;   /* Muted Blue */
             
-            /* Fonts */
-            --font-display: 'BBH Bartle', serif; 
-            --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; /* iOS System stack */
+            --font-main: 'Quicksand', sans-serif;
         }
         
         * { box-sizing: border-box; }
@@ -47,60 +45,67 @@ HTML_TEMPLATE = """
         body { 
             background-color: var(--bg-dark);
             color: var(--text-main);
-            font-family: var(--font-body);
+            font-family: var(--font-main);
             min-height: 100vh;
             margin: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            padding: 20px;
+            /* Places search in middle if no results, otherwise top */
+            justify-content: {{ 'flex-start' if query else 'center' }}; 
+            padding-top: {{ '60px' if query else '0' }};
+            transition: all 0.5s ease;
         }
 
-        /* 1. Responsive Heading (Fits properly on any screen) */
+        /* 1. The Perfectly Centered Heading */
         h1 { 
-            font-family: var(--font-display);
-            /* clamp(min, preferred, max) -> scales smoothly */
-            font-size: clamp(3rem, 12vw, 6rem); 
-            margin: 0 0 40px 0;
-            letter-spacing: -0.03em;
-            text-transform: uppercase;
+            font-family: var(--font-main);
+            font-size: 3.5rem; /* Fixed, reasonable size */
+            margin: 0 0 30px 0;
+            letter-spacing: -1px;
             color: var(--text-main);
             text-align: center;
-            line-height: 1;
-            width: 100%;
+            font-weight: 300; /* Light weight for elegance */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
         }
         
+        /* Make "Google" bold like the real logo */
         h1 span {
+            font-weight: 700;
             color: var(--accent-sand);
         }
 
         .container {
-            width: 100%;
-            max-width: 700px; /* Optimal reading width */
-            text-align: center;
+            width: 90%;
+            max-width: 650px; /* Constrained width for readability */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
-        /* 2. iPhone-style Rounded Search Bar */
+        /* 2. Rounded iPhone Search Bar */
         .search-wrapper {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            padding: 8px;
-            border-radius: 50px; /* Fully rounded pill shape */
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 6px;
+            border-radius: 50px; /* Full Pill Shape */
             display: flex;
             align-items: center;
-            gap: 10px;
+            width: 100%;
             border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
 
         .search-wrapper:focus-within {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.12);
             border-color: var(--accent-sand);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.4);
-            transform: scale(1.01);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            transform: translateY(-2px);
         }
 
         input { 
@@ -108,32 +113,31 @@ HTML_TEMPLATE = """
             border: none;
             color: var(--text-main);
             font-size: 1.1rem;
-            padding: 12px 20px;
+            padding: 14px 25px;
             width: 100%;
-            font-family: var(--font-body);
-            font-weight: 400;
+            font-family: var(--font-main);
+            font-weight: 500;
             outline: none;
         }
 
         input::placeholder {
             color: var(--accent-blue);
-            font-weight: 300;
+            font-weight: 400;
         }
 
-        /* Round Button */
+        /* Search Button */
         button { 
             background-color: var(--accent-sand);
             color: var(--bg-dark);
             border: none;
             border-radius: 40px;
-            padding: 12px 30px;
-            font-family: var(--font-display);
+            padding: 12px 28px;
+            font-family: var(--font-main);
+            font-weight: 700;
             font-size: 1rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
             cursor: pointer;
-            transition: transform 0.2s;
-            flex-shrink: 0; /* Prevents button from shrinking on small phones */
+            transition: all 0.2s;
+            margin-right: 4px; /* Tiny spacing from edge */
         }
 
         button:hover {
@@ -141,67 +145,66 @@ HTML_TEMPLATE = """
             background-color: #E0E1DD;
         }
 
-        /* 3. iPhone-style Results Cards */
+        /* 3. Results Section */
         .stats {
-            margin: 20px 0 10px;
+            align-self: flex-start; /* Align left */
+            margin: 20px 0 15px 15px;
             color: var(--accent-blue);
-            font-size: 0.85rem;
-            text-align: left;
-            padding-left: 15px;
+            font-size: 0.9rem;
             font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 1px;
         }
 
         .results {
+            width: 100%;
             display: flex;
             flex-direction: column;
-            gap: 16px;
-            text-align: left;
-            padding-bottom: 40px;
+            gap: 15px;
+            padding-bottom: 50px;
         }
 
         .result-card {
             background: var(--bg-card);
-            backdrop-filter: blur(12px); /* Glass effect */
-            -webkit-backdrop-filter: blur(12px);
-            padding: 24px;
-            border-radius: 28px; /* High curvature (Apple style) */
+            padding: 22px;
+            border-radius: 20px; /* Smooth corners */
             border: 1px solid rgba(255, 255, 255, 0.05);
             transition: transform 0.2s ease, background 0.2s;
+            text-align: left;
+        }
+
+        .web-result {
+            border-left: 4px solid var(--accent-sand);
         }
         
-        .web-result {
-            /* Subtle distinction for web results */
-            background: rgba(65, 90, 119, 0.15); 
+        .internal-result {
+            border-left: 4px solid var(--accent-blue);
         }
 
         .result-card:hover {
-            transform: scale(1.02);
-            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.1);
         }
 
         a { 
-            font-family: var(--font-display);
-            font-size: 1.4rem;
+            font-family: var(--font-main);
+            font-weight: 700;
+            font-size: 1.25rem;
             color: var(--text-main);
             text-decoration: none;
             display: block;
-            margin-bottom: 8px;
-            line-height: 1.1;
+            margin-bottom: 6px;
         }
         
         a:hover {
             color: var(--accent-sand);
+            text-decoration: underline;
         }
 
         p.snippet {
             color: #AAB3C0; 
             line-height: 1.5;
             font-size: 0.95rem;
-            font-weight: 300;
+            font-weight: 400;
             margin: 0;
-            opacity: 0.9;
         }
     </style>
 </head>
@@ -209,7 +212,7 @@ HTML_TEMPLATE = """
     <div class="container">
         <h1>Mini<span>Google</span></h1>
         
-        <form action="/search" method="get">
+        <form action="/search" method="get" style="width: 100%;">
             <div class="search-wrapper">
                 <input type="text" name="q" placeholder="Search the web..." required value="{{ query if query else '' }}">
                 <button type="submit">Search</button>
@@ -217,19 +220,19 @@ HTML_TEMPLATE = """
         </form>
         
         {% if query %}
-            <p class="stats">Result for "<b>{{ query }}</b>" ({{ time }} ms)</p>
+            <p class="stats">Found results for "<b>{{ query }}</b>" ({{ time }} ms)</p>
             
             <div class="results">
                 {% for res in results %}
-                    <div class="result-card {{ 'web-result' if res.type == 'web' else '' }}">
+                    <div class="result-card {{ 'web-result' if res.type == 'web' else 'internal-result' }}">
                         <a href="{{ res.link }}" target="_blank">{{ res.title }}</a>
                         <p class="snippet">{{ res.desc }}</p>
                     </div>
                 {% endfor %}
                 
                 {% if not results %}
-                    <div class="result-card">
-                        <p class="snippet" style="text-align: center;">No results found. Try a different term.</p>
+                    <div class="result-card" style="text-align: center; border: none;">
+                        <p class="snippet">No results found. Try a different term.</p>
                     </div>
                 {% endif %}
             </div>
