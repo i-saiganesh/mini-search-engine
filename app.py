@@ -2,11 +2,11 @@ from flask import Flask, request, render_template_string
 import json
 import time
 import os
-import requests  # Standard library, completely reliable
+import requests
 
 app = Flask(__name__)
 
-# 1. Load the Index
+# 1. Load the Internal Index
 INDEX_FILE = "inverted_index.json"
 if os.path.exists(INDEX_FILE):
     with open(INDEX_FILE, 'r', encoding='utf-8') as f:
@@ -14,14 +14,14 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. The Stealth Mode UI (unchanged)
+# 2. The Dark UI
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mini-Google | Stealth</title>
+    <title>Mini-Google | Global</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
         :root {
@@ -57,7 +57,7 @@ HTML_TEMPLATE = """
     <h1><span>🕷️</span> Mini-Google</h1>
     <div class="container">
         <form action="/search" method="get">
-            <input type="text" name="q" placeholder="Search anything..." required value="{{ query if query else '' }}">
+            <input type="text" name="q" placeholder="Search the world..." required value="{{ query if query else '' }}">
             <button type="submit">Search</button>
         </form>
         {% if query %}
@@ -100,28 +100,30 @@ def search():
                     "type": "internal"
                 })
 
-        # 2. External Web Search (Wikipedia OpenSearch)
-        # This API is public and does not get blocked like scraping tools
+        # 2. Global Web Search (Wikipedia OpenSearch)
+        # This acts like a real search engine: Titles, Links, and Descriptions
         try:
             url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=5&format=json"
-            response = requests.get(url, timeout=5)
-            data = response.json()
-            # data format: [query, [titles], [descriptions], [links]]
+            # User-Agent is crucial to avoid being treated as a bot
+            headers = {'User-Agent': 'MiniGoogleProject/1.0 (Educational Portfolio)'}
+            response = requests.get(url, headers=headers, timeout=5)
             
-            titles = data[1]
-            descs = data[2]
-            links = data[3]
-            
-            for i in range(len(titles)):
-                final_results.append({
-                    "title": "🌐 " + titles[i],
-                    "link": links[i],
-                    "desc": descs[i] if descs[i] else "Click to read more on Wikipedia...",
-                    "type": "web"
-                })
+            if response.status_code == 200:
+                data = response.json()
+                # API returns: [query, [titles], [descriptions], [links]]
+                titles = data[1]
+                descs = data[2]
+                links = data[3]
                 
+                for i in range(len(titles)):
+                    final_results.append({
+                        "title": "🌐 " + titles[i],
+                        "link": links[i],
+                        "desc": descs[i] if descs[i] else "Click to view full article on the web...",
+                        "type": "web"
+                    })
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Global Search Error: {e}")
 
     duration = round((time.time() - start_time) * 1000, 2)
     return render_template_string(HTML_TEMPLATE, query=query, results=final_results, time=duration)
