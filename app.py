@@ -15,7 +15,7 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. The Final UI with Theme Toggle & Clear Button
+# 2. The Final UI (Clickable Logo)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -31,7 +31,7 @@ HTML_TEMPLATE = """
     <style>
         /* THEME VARIABLES */
         :root {
-            /* Default: Dark Theme (Dune) */
+            /* Default: Dark Theme */
             --bg-body: #0D1B2A;       
             --bg-card: rgba(27, 38, 59, 0.6); 
             --bg-input: rgba(255, 255, 255, 0.08);
@@ -52,7 +52,7 @@ HTML_TEMPLATE = """
             --bg-input: #FFFFFF;
             --text-main: #1B263B;     
             --text-muted: #5C677D;
-            --accent-sand: #B3AF8F;   /* Keep the signature color */
+            --accent-sand: #B3AF8F;
             --accent-blue: #A0AEC0; 
             --shadow: rgba(0,0,0,0.08);
             --border: rgba(0, 0, 0, 0.05);
@@ -97,17 +97,30 @@ HTML_TEMPLATE = """
         .theme-toggle:hover { transform: scale(1.1); }
         .theme-toggle svg { width: 20px; height: 20px; fill: currentColor; }
 
+        /* --- CLICKABLE LOGO --- */
         h1 { 
             font-family: var(--font-main);
             font-size: 3rem; 
             margin: 0 0 30px 0;
             letter-spacing: -1px;
-            color: var(--text-main);
             text-align: center;
             font-weight: 300;
         }
         
-        h1 span {
+        /* The link inside the H1 */
+        .logo-link {
+            text-decoration: none;
+            color: var(--text-main);
+            display: inline-block;
+            transition: transform 0.2s;
+        }
+
+        .logo-link:hover {
+            transform: scale(1.02); /* Subtle pop effect */
+        }
+        
+        /* The word 'Google' inside the logo */
+        .logo-link span {
             font-weight: 700;
             color: var(--accent-sand);
         }
@@ -120,12 +133,12 @@ HTML_TEMPLATE = """
             align-items: center;
         }
 
-        /* --- SEARCH BAR WITH CLEAR BUTTON --- */
+        /* --- SEARCH BAR --- */
         .search-wrapper {
             background: var(--bg-input);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            padding: 6px 15px 6px 6px; /* Extra padding right for X button */
+            padding: 6px 15px 6px 6px;
             border-radius: 50px;
             display: flex;
             align-items: center;
@@ -155,7 +168,6 @@ HTML_TEMPLATE = """
             outline: none;
         }
         
-        /* The Clear (X) Button */
         .clear-btn {
             background: transparent;
             border: none;
@@ -163,20 +175,18 @@ HTML_TEMPLATE = """
             font-size: 1.5rem;
             cursor: pointer;
             padding: 0 10px;
-            display: none; /* Hidden by default */
+            display: none; 
             line-height: 1;
         }
         .clear-btn:hover { color: var(--accent-sand); }
         
-        /* Show clear button when input has text (handled by JS) */
         input:not(:placeholder-shown) + .clear-btn {
             display: block;
         }
 
-        /* Main Search Button */
         .search-btn { 
             background-color: var(--accent-sand);
-            color: var(--bg-dark); /* Always dark text on gold button */
+            color: var(--bg-dark); 
             border: none;
             border-radius: 40px;
             padding: 12px 28px;
@@ -236,7 +246,8 @@ HTML_TEMPLATE = """
             z-index: 10;
         }
 
-        a { 
+        /* Search Result Links */
+        a.result-link { 
             font-family: var(--font-main);
             font-weight: 700;
             font-size: 1.15rem;
@@ -251,12 +262,12 @@ HTML_TEMPLATE = """
             width: 100%;
         }
         
-        a:hover {
+        a.result-link:hover {
             white-space: normal;      
             word-break: break-all;    
             overflow: visible;        
             color: var(--accent-sand);
-            background: var(--bg-body); /* Adaptive background */
+            background: var(--bg-body); 
             border-radius: 4px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.5);
             position: relative;       
@@ -288,7 +299,9 @@ HTML_TEMPLATE = """
     </button>
 
     <div class="container">
-        <h1>Mini<span>Google</span></h1>
+        <h1>
+            <a href="/" class="logo-link">Mini<span>Google</span></a>
+        </h1>
         
         <form action="/search" method="get" style="width: 100%; display: flex; justify-content: center;">
             <div class="search-wrapper">
@@ -304,7 +317,7 @@ HTML_TEMPLATE = """
             <div class="results">
                 {% for res in results %}
                     <div class="result-card {{ 'web-result' if res.type == 'web' else 'internal-result' }}">
-                        <a href="{{ res.link }}" target="_blank" title="{{ res.title }}">{{ res.title }}</a>
+                        <a href="{{ res.link }}" class="result-link" target="_blank" title="{{ res.title }}">{{ res.title }}</a>
                         <p class="snippet">{{ res.desc }}</p>
                     </div>
                 {% endfor %}
@@ -339,7 +352,7 @@ HTML_TEMPLATE = """
             }
         }
 
-        // Load saved theme on startup
+        // Load saved theme
         const savedTheme = localStorage.getItem('theme');
         if (savedTheme === 'light') {
             document.body.setAttribute('data-theme', 'light');
@@ -361,7 +374,6 @@ HTML_TEMPLATE = """
             toggleClearBtn();
         }
 
-        // Initialize button state
         toggleClearBtn();
     </script>
 </body>
