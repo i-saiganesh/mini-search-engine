@@ -15,7 +15,7 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. The Final "Quicksand/Clean" UI
+# 2. The Final Grid Layout UI
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -31,11 +31,11 @@ HTML_TEMPLATE = """
     <style>
         :root {
             /* Palette */
-            --bg-dark: #0D1B2A;       /* Deep Navy */
-            --bg-card: rgba(27, 38, 59, 0.6); /* Glassy Blue */
-            --text-main: #E0E1DD;     /* Bone White */
-            --accent-sand: #B3AF8F;   /* Gold/Sand */
-            --accent-blue: #415A77;   /* Muted Blue */
+            --bg-dark: #0D1B2A;       
+            --bg-card: rgba(27, 38, 59, 0.6); 
+            --text-main: #E0E1DD;     
+            --accent-sand: #B3AF8F;   
+            --accent-blue: #415A77;   
             
             --font-main: 'Quicksand', sans-serif;
         }
@@ -51,28 +51,22 @@ HTML_TEMPLATE = """
             display: flex;
             flex-direction: column;
             align-items: center;
-            /* Places search in middle if no results, otherwise top */
+            /* Dynamic Centering: Center if empty, Top if searching */
             justify-content: {{ 'flex-start' if query else 'center' }}; 
-            padding-top: {{ '60px' if query else '0' }};
+            padding-top: {{ '40px' if query else '0' }};
             transition: all 0.5s ease;
         }
 
-        /* 1. The Perfectly Centered Heading */
         h1 { 
             font-family: var(--font-main);
-            font-size: 3.5rem; /* Fixed, reasonable size */
+            font-size: 3rem; 
             margin: 0 0 30px 0;
             letter-spacing: -1px;
             color: var(--text-main);
             text-align: center;
-            font-weight: 300; /* Light weight for elegance */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
+            font-weight: 300;
         }
         
-        /* Make "Google" bold like the real logo */
         h1 span {
             font-weight: 700;
             color: var(--accent-sand);
@@ -80,22 +74,24 @@ HTML_TEMPLATE = """
 
         .container {
             width: 90%;
-            max-width: 650px; /* Constrained width for readability */
+            /* WIDER CONTAINER to fit 3 cards side-by-side */
+            max-width: 1000px; 
             display: flex;
             flex-direction: column;
             align-items: center;
         }
 
-        /* 2. Rounded iPhone Search Bar */
+        /* Search Bar */
         .search-wrapper {
             background: rgba(255, 255, 255, 0.08);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             padding: 6px;
-            border-radius: 50px; /* Full Pill Shape */
+            border-radius: 50px;
             display: flex;
             align-items: center;
             width: 100%;
+            max-width: 600px; /* Keep search bar compact */
             border: 1px solid rgba(255, 255, 255, 0.1);
             transition: all 0.3s ease;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
@@ -120,12 +116,6 @@ HTML_TEMPLATE = """
             outline: none;
         }
 
-        input::placeholder {
-            color: var(--accent-blue);
-            font-weight: 400;
-        }
-
-        /* Search Button */
         button { 
             background-color: var(--accent-sand);
             color: var(--bg-dark);
@@ -137,7 +127,7 @@ HTML_TEMPLATE = """
             font-size: 1rem;
             cursor: pointer;
             transition: all 0.2s;
-            margin-right: 4px; /* Tiny spacing from edge */
+            margin-right: 4px;
         }
 
         button:hover {
@@ -145,53 +135,61 @@ HTML_TEMPLATE = """
             background-color: #E0E1DD;
         }
 
-        /* 3. Results Section */
+        /* Results Grid Logic */
         .stats {
-            align-self: flex-start; /* Align left */
-            margin: 20px 0 15px 15px;
+            align-self: flex-start;
+            margin: 20px 0 15px 0; /* Reduced margin */
             color: var(--accent-blue);
             font-size: 0.9rem;
             font-weight: 500;
+            width: 100%;
+            max-width: 1000px;
         }
 
         .results {
             width: 100%;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
+            display: grid;
+            /* The Magic Grid: 3 Columns on Desktop, 1 on Mobile */
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px; /* Tighter spacing */
             padding-bottom: 50px;
         }
 
         .result-card {
             background: var(--bg-card);
-            padding: 22px;
-            border-radius: 20px; /* Smooth corners */
+            padding: 20px;
+            border-radius: 16px;
             border: 1px solid rgba(255, 255, 255, 0.05);
             transition: transform 0.2s ease, background 0.2s;
             text-align: left;
+            display: flex;
+            flex-direction: column;
+            height: 100%; /* Ensures equal height cards */
         }
 
         .web-result {
-            border-left: 4px solid var(--accent-sand);
+            border-top: 4px solid var(--accent-sand); /* Top border for grid look */
         }
         
         .internal-result {
-            border-left: 4px solid var(--accent-blue);
+            border-top: 4px solid var(--accent-blue);
         }
 
         .result-card:hover {
-            transform: translateY(-2px);
+            transform: translateY(-4px);
             background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
         }
 
         a { 
             font-family: var(--font-main);
             font-weight: 700;
-            font-size: 1.25rem;
+            font-size: 1.15rem; /* Slightly smaller for grid */
             color: var(--text-main);
             text-decoration: none;
             display: block;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
+            line-height: 1.3;
         }
         
         a:hover {
@@ -202,9 +200,14 @@ HTML_TEMPLATE = """
         p.snippet {
             color: #AAB3C0; 
             line-height: 1.5;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             font-weight: 400;
             margin: 0;
+            /* Limit text length to keep cards even */
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
     </style>
 </head>
@@ -212,7 +215,7 @@ HTML_TEMPLATE = """
     <div class="container">
         <h1>Mini<span>Google</span></h1>
         
-        <form action="/search" method="get" style="width: 100%;">
+        <form action="/search" method="get" style="width: 100%; display: flex; justify-content: center;">
             <div class="search-wrapper">
                 <input type="text" name="q" placeholder="Search the web..." required value="{{ query if query else '' }}">
                 <button type="submit">Search</button>
@@ -231,7 +234,7 @@ HTML_TEMPLATE = """
                 {% endfor %}
                 
                 {% if not results %}
-                    <div class="result-card" style="text-align: center; border: none;">
+                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;">
                         <p class="snippet">No results found. Try a different term.</p>
                     </div>
                 {% endif %}
@@ -261,7 +264,7 @@ def search():
                     "desc": ":: Internal Database Match", "type": "internal"
                 })
 
-        # 2. Web Search (Scraper)
+        # 2. Web Search
         try:
             url = "https://html.duckduckgo.com/html/"
             payload = {'q': query}
@@ -271,7 +274,8 @@ def search():
             
             count = 0
             for result in soup.find_all('div', class_='result'):
-                if count >= 6: break
+                # Limit to 9 results to fill a 3x3 grid nicely
+                if count >= 9: break 
                 link_tag = result.find('a', class_='result__a')
                 snippet_tag = result.find('a', class_='result__snippet')
                 if link_tag:
