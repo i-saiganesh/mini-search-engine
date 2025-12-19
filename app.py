@@ -3,7 +3,7 @@ import json
 import time
 import os
 import requests
-from bs4 import BeautifulSoup  # This tool helps us read the web
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
@@ -15,54 +15,193 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. The Dark Stealth UI
+# 2. The "Dune / High-End" UI
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mini-Google | Global</title>
+    <title>Mini-Google</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=BBH+Bartle&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
         :root {
-            --bg-color: #0a0a0a; --card-bg: rgba(25, 25, 25, 0.85); --text-primary: #ffffff;
-            --text-secondary: #a0a0a0; --accent-color: #00f2ff;
-            --accent-gradient: linear-gradient(135deg, #00c6ff, #0072ff);
+            /* Your Custom Palette */
+            --bg-dark: #0D1B2A;       /* Black/Navy */
+            --bg-card: #1B263B;       /* Dark Blue */
+            --text-main: #E0E1DD;     /* Bone White */
+            --accent-sand: #B3AF8F;   /* Sand/Gold */
+            --accent-blue: #415A77;   /* Muted Blue */
+            
+            --font-display: 'BBH Bartle', serif; /* The Crazy Font */
+            --font-body: 'Inter', sans-serif;    /* Readable Font */
         }
+        
         body { 
-            font-family: 'Inter', sans-serif; background-color: var(--bg-color);
-            background-image: radial-gradient(circle at 20% 30%, rgba(0, 242, 255, 0.05) 0%, transparent 50%),
-                              radial-gradient(circle at 80% 70%, rgba(188, 19, 254, 0.05) 0%, transparent 50%);
-            min-height: 100vh; margin: 0; display: flex; flex-direction: column; align-items: center; color: var(--text-primary);
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: var(--font-body);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; /* Center vertically like the login page */
         }
-        h1 { font-weight: 800; font-size: 3.5rem; margin-top: 60px; letter-spacing: -1px;
-            background: linear-gradient(to right, #fff, #a0a0a0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        h1 span { color: var(--accent-color); -webkit-text-fill-color: var(--accent-color); }
+
+        /* The Logo - Using the Crazy Font */
+        h1 { 
+            font-family: var(--font-display);
+            font-size: 5rem; 
+            margin: 0 0 40px 0;
+            letter-spacing: -2px;
+            text-transform: uppercase;
+            color: var(--text-main);
+            text-align: center;
+            line-height: 0.9;
+        }
+        
+        h1 span {
+            color: var(--accent-sand);
+        }
+
         .container {
-            background: var(--card-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            padding: 50px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4); width: 85%; max-width: 650px; text-align: center;
+            width: 90%;
+            max-width: 800px;
+            text-align: center;
         }
-        input { padding: 18px 25px; width: 65%; border-radius: 14px; border: 2px solid rgba(255, 255, 255, 0.1); background: rgba(0,0,0,0.3); color: white; font-size: 17px; outline: none; }
-        input:focus { border-color: var(--accent-color); box-shadow: 0 0 20px rgba(0, 242, 255, 0.2); }
-        button { padding: 18px 35px; background: var(--accent-gradient); color: white; border: none; border-radius: 14px; font-size: 17px; font-weight: 700; cursor: pointer; }
-        .result-card { background: rgba(35, 35, 35, 0.6); border-radius: 16px; padding: 20px; text-align: left; border-left: 4px solid var(--accent-color); margin-bottom: 15px; transition: 0.3s; }
-        .web-result { border-left-color: #b000ff; }
-        .result-card:hover { transform: translateY(-3px); background: rgba(45, 45, 45, 0.8); }
-        a { text-decoration: none; color: var(--accent-color); font-weight: 600; font-size: 19px; display: block; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        p.snippet { color: var(--text-secondary); font-size: 15px; line-height: 1.6; margin: 0; }
+
+        /* The Search Box Area */
+        .search-wrapper {
+            background: var(--bg-card);
+            padding: 10px;
+            border-radius: 12px;
+            display: flex;
+            gap: 10px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            border: 1px solid var(--accent-blue);
+            transition: transform 0.3s ease;
+        }
+
+        .search-wrapper:focus-within {
+            transform: scale(1.02);
+            border-color: var(--accent-sand);
+        }
+
+        input { 
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            font-size: 1.2rem;
+            padding: 15px 20px;
+            width: 100%;
+            font-family: var(--font-body);
+            outline: none;
+        }
+
+        input::placeholder {
+            color: var(--accent-blue);
+            opacity: 0.7;
+        }
+
+        button { 
+            background-color: var(--accent-sand);
+            color: var(--bg-dark);
+            border: none;
+            border-radius: 8px;
+            padding: 0 30px;
+            font-family: var(--font-display);
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--text-main);
+            transform: translateY(-2px);
+        }
+
+        /* Results Area */
+        .stats {
+            margin-top: 20px;
+            color: var(--accent-blue);
+            font-size: 0.9rem;
+            text-align: left;
+            padding-left: 10px;
+        }
+
+        .results {
+            margin-top: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            text-align: left;
+        }
+
+        .result-card {
+            background: var(--bg-card);
+            padding: 25px;
+            border-radius: 4px; /* Sharper edges for modern look */
+            border-left: 4px solid var(--accent-blue);
+            transition: all 0.2s ease;
+        }
+        
+        .web-result {
+            border-left-color: var(--accent-sand);
+        }
+
+        .result-card:hover {
+            transform: translateX(10px);
+            background: #23314A; /* Slightly lighter on hover */
+        }
+
+        a { 
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            color: var(--text-main);
+            text-decoration: none;
+            display: block;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+            text-decoration-color: var(--accent-sand);
+        }
+
+        p.snippet {
+            color: #AAB3C0; /* Muted grey/blue */
+            line-height: 1.6;
+            font-size: 1rem;
+            margin: 0;
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--accent-blue); border-radius: 4px; }
     </style>
 </head>
 <body>
-    <h1><span>🕷️</span> Mini-Google</h1>
     <div class="container">
+        <h1>Mini<span>Google</span></h1>
+        
         <form action="/search" method="get">
-            <input type="text" name="q" placeholder="Search the real web..." required value="{{ query if query else '' }}">
-            <button type="submit">Search</button>
+            <div class="search-wrapper">
+                <input type="text" name="q" placeholder="Type to search..." required value="{{ query if query else '' }}">
+                <button type="submit">GO</button>
+            </div>
         </form>
+        
         {% if query %}
-            <p style="text-align: left; color: #a0a0a0; margin-bottom: 20px;">🚀 Global Results for "<b>{{ query }}</b>" ({{ time }} ms)</p>
+            <p class="stats">:: Found results for "<b>{{ query }}</b>" in {{ time }} ms</p>
+            
             <div class="results">
                 {% for res in results %}
                     <div class="result-card {{ 'web-result' if res.type == 'web' else '' }}">
@@ -70,8 +209,9 @@ HTML_TEMPLATE = """
                         <p class="snippet">{{ res.desc }}</p>
                     </div>
                 {% endfor %}
+                
                 {% if not results %}
-                    <p>No results found. (Try again, sometimes the connection times out!)</p>
+                    <p style="color: var(--accent-blue)">:: System returned 0 results.</p>
                 {% endif %}
             </div>
         {% endif %}
@@ -91,49 +231,37 @@ def search():
     final_results = []
 
     if query:
-        # 1. Internal DB Search
+        # 1. Internal DB
         if query in inverted_index:
             for url in inverted_index[query]:
                 final_results.append({
                     "title": url, "link": url, 
-                    "desc": "Source: Internal Index Database", "type": "internal"
+                    "desc": ":: Internal Index Match", "type": "internal"
                 })
 
-        # 2. REAL WEB SEARCH (DuckDuckGo HTML Scraper)
+        # 2. Web Search (Scraper)
         try:
-            # We use the HTML version because it is lighter and easier to scrape
             url = "https://html.duckduckgo.com/html/"
             payload = {'q': query}
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-            }
-            
+            headers = {"User-Agent": "Mozilla/5.0"}
             response = requests.post(url, data=payload, headers=headers, timeout=5)
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Find results in the HTML
             count = 0
             for result in soup.find_all('div', class_='result'):
-                if count >= 5: break  # Limit to 5 results
-                
+                if count >= 6: break
                 link_tag = result.find('a', class_='result__a')
                 snippet_tag = result.find('a', class_='result__snippet')
-                
                 if link_tag:
-                    title = link_tag.get_text()
-                    link = link_tag['href']
-                    desc = snippet_tag.get_text() if snippet_tag else "No description available."
-                    
                     final_results.append({
-                        "title": "🌐 " + title,
-                        "link": link,
-                        "desc": desc,
+                        "title": link_tag.get_text(),
+                        "link": link_tag['href'],
+                        "desc": snippet_tag.get_text() if snippet_tag else "No data available.",
                         "type": "web"
                     })
                     count += 1
-                    
         except Exception as e:
-            print(f"Web Search Error: {e}")
+            print(f"Error: {e}")
 
     duration = round((time.time() - start_time) * 1000, 2)
     return render_template_string(HTML_TEMPLATE, query=query, results=final_results, time=duration)
