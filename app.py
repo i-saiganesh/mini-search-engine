@@ -15,7 +15,7 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. The Final "Smart Grid" UI
+# 2. The Final UI with Theme Toggle & Clear Button
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -29,21 +29,39 @@ HTML_TEMPLATE = """
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;700&display=swap" rel="stylesheet">
 
     <style>
+        /* THEME VARIABLES */
         :root {
-            /* Palette */
-            --bg-dark: #0D1B2A;       
+            /* Default: Dark Theme (Dune) */
+            --bg-body: #0D1B2A;       
             --bg-card: rgba(27, 38, 59, 0.6); 
+            --bg-input: rgba(255, 255, 255, 0.08);
             --text-main: #E0E1DD;     
+            --text-muted: #AAB3C0;
             --accent-sand: #B3AF8F;   
-            --accent-blue: #415A77;   
+            --accent-blue: #415A77; 
+            --shadow: rgba(0,0,0,0.2);
+            --border: rgba(255, 255, 255, 0.05);
             
             --font-main: 'Quicksand', sans-serif;
+        }
+
+        /* Light Theme Override */
+        [data-theme="light"] {
+            --bg-body: #F0F2F5;       
+            --bg-card: #FFFFFF; 
+            --bg-input: #FFFFFF;
+            --text-main: #1B263B;     
+            --text-muted: #5C677D;
+            --accent-sand: #B3AF8F;   /* Keep the signature color */
+            --accent-blue: #A0AEC0; 
+            --shadow: rgba(0,0,0,0.08);
+            --border: rgba(0, 0, 0, 0.05);
         }
         
         * { box-sizing: border-box; }
 
         body { 
-            background-color: var(--bg-dark);
+            background-color: var(--bg-body);
             color: var(--text-main);
             font-family: var(--font-main);
             min-height: 100vh;
@@ -53,8 +71,31 @@ HTML_TEMPLATE = """
             align-items: center;
             justify-content: {{ 'flex-start' if query else 'center' }}; 
             padding-top: {{ '40px' if query else '0' }};
-            transition: all 0.5s ease;
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
+
+        /* --- THEME TOGGLE BUTTON --- */
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 10px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px var(--shadow);
+            z-index: 100;
+        }
+        .theme-toggle:hover { transform: scale(1.1); }
+        .theme-toggle svg { width: 20px; height: 20px; fill: currentColor; }
 
         h1 { 
             font-family: var(--font-main);
@@ -79,25 +120,26 @@ HTML_TEMPLATE = """
             align-items: center;
         }
 
+        /* --- SEARCH BAR WITH CLEAR BUTTON --- */
         .search-wrapper {
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--bg-input);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            padding: 6px;
+            padding: 6px 15px 6px 6px; /* Extra padding right for X button */
             border-radius: 50px;
             display: flex;
             align-items: center;
             width: 100%;
             max-width: 600px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border);
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 15px var(--shadow);
+            position: relative;
         }
 
         .search-wrapper:focus-within {
-            background: rgba(255, 255, 255, 0.12);
             border-color: var(--accent-sand);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            box-shadow: 0 8px 25px var(--shadow);
             transform: translateY(-2px);
         }
 
@@ -106,16 +148,35 @@ HTML_TEMPLATE = """
             border: none;
             color: var(--text-main);
             font-size: 1.1rem;
-            padding: 14px 25px;
+            padding: 14px 15px;
             width: 100%;
             font-family: var(--font-main);
             font-weight: 500;
             outline: none;
         }
+        
+        /* The Clear (X) Button */
+        .clear-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0 10px;
+            display: none; /* Hidden by default */
+            line-height: 1;
+        }
+        .clear-btn:hover { color: var(--accent-sand); }
+        
+        /* Show clear button when input has text (handled by JS) */
+        input:not(:placeholder-shown) + .clear-btn {
+            display: block;
+        }
 
-        button { 
+        /* Main Search Button */
+        .search-btn { 
             background-color: var(--accent-sand);
-            color: var(--bg-dark);
+            color: var(--bg-dark); /* Always dark text on gold button */
             border: none;
             border-radius: 40px;
             padding: 12px 28px;
@@ -124,18 +185,18 @@ HTML_TEMPLATE = """
             font-size: 1rem;
             cursor: pointer;
             transition: all 0.2s;
-            margin-right: 4px;
+            margin-left: 5px;
         }
 
-        button:hover {
+        .search-btn:hover {
             transform: scale(1.05);
-            background-color: #E0E1DD;
+            filter: brightness(1.1);
         }
 
         .stats {
             align-self: flex-start;
             margin: 20px 0 15px 0;
-            color: var(--accent-blue);
+            color: var(--text-muted);
             font-size: 0.9rem;
             font-weight: 500;
             width: 100%;
@@ -154,16 +215,15 @@ HTML_TEMPLATE = """
             background: var(--bg-card);
             padding: 20px;
             border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
             transition: transform 0.2s ease, background 0.2s;
             text-align: left;
             display: flex;
             flex-direction: column;
             height: 100%;
-            
-            /* CRITICAL FIX: Prevent overlap */
             overflow: hidden; 
             position: relative;
+            box-shadow: 0 2px 5px var(--shadow);
         }
 
         .web-result { border-top: 4px solid var(--accent-sand); }
@@ -171,14 +231,11 @@ HTML_TEMPLATE = """
 
         .result-card:hover {
             transform: translateY(-4px);
-            background: rgba(255, 255, 255, 0.1);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-            /* Allow content to flow out if needed on hover, though usually not needed with the wrap fix */
+            box-shadow: 0 10px 20px var(--shadow);
             overflow: visible; 
             z-index: 10;
         }
 
-        /* --- THE LINK FIX --- */
         a { 
             font-family: var(--font-main);
             font-weight: 700;
@@ -187,30 +244,28 @@ HTML_TEMPLATE = """
             text-decoration: none;
             margin-bottom: 8px;
             line-height: 1.3;
-            
-            /* 1. Default: Truncate with Ellipsis */
-            white-space: nowrap;      /* Force one line */
-            overflow: hidden;         /* Hide spillover */
-            text-overflow: ellipsis;  /* Add '...' */
+            white-space: nowrap;      
+            overflow: hidden;         
+            text-overflow: ellipsis;  
             display: block;
             width: 100%;
         }
         
-        /* 2. Hover: Show Full Text */
         a:hover {
-            white-space: normal;      /* Allow wrapping */
-            word-break: break-all;    /* Force break if it's a super long URL with no spaces */
-            overflow: visible;        /* Show everything */
+            white-space: normal;      
+            word-break: break-all;    
+            overflow: visible;        
             color: var(--accent-sand);
-            background: rgba(13, 27, 42, 0.9); /* Dark background to make it readable over other items */
+            background: var(--bg-body); /* Adaptive background */
             border-radius: 4px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-            position: relative;       /* Pop out */
+            position: relative;       
             z-index: 20;
+            padding: 2px;
         }
 
         p.snippet {
-            color: #AAB3C0; 
+            color: var(--text-muted); 
             line-height: 1.5;
             font-size: 0.9rem;
             font-weight: 400;
@@ -223,13 +278,23 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Switch Theme">
+        <svg id="sun-icon" viewBox="0 0 24 24" style="display: none;">
+            <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 9c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-14c.55 0 1 .45 1 1v2c0 .55-.45 1-1 1s-1-.45-1-1V3c0-.55.45-1 1-1zm0 18c.55 0 1 .45 1 1v2c0 .55-.45 1-1 1s-1-.45-1-1v-2c0-.55.45-1 1-1zm10-9c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1s.45-1 1-1h2c.55 0 1 .45 1 1zm-18 0c0 .55-.45 1-1 1H2c-.55 0-1-.45-1-1s.45-1 1-1h2c.55 0 1 .45 1 1zm14.85-6.85l1.41 1.41c.39.39.39 1.02 0 1.41-.39.39-1.02.39-1.41 0l-1.41-1.41c-.39-.39-.39-1.02 0-1.41.39-.39 1.02-.39 1.41 0zm-12.72 12.72l1.41 1.41c.39.39.39 1.02 0 1.41-.39.39-1.02.39-1.41 0l-1.41-1.41c-.39-.39-.39-1.02 0-1.41.39-.39 1.02-.39 1.41 0zm12.72 0l-1.41 1.41c-.39.39-1.02.39-1.41 0-.39-.39-.39-1.02 0-1.41l1.41-1.41c.39-.39 1.02-.39 1.41 0 .39.39.39 1.02 0 1.41zm-12.72-12.72l-1.41 1.41c-.39.39-1.02.39-1.41 0-.39-.39-.39-1.02 0-1.41l1.41-1.41c.39-.39 1.02-.39 1.41 0 .39.39.39 1.02 0 1.41z"/>
+        </svg>
+        <svg id="moon-icon" viewBox="0 0 24 24">
+            <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.03 0-5.5-2.47-5.5-5.5 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/>
+        </svg>
+    </button>
+
     <div class="container">
         <h1>Mini<span>Google</span></h1>
         
         <form action="/search" method="get" style="width: 100%; display: flex; justify-content: center;">
             <div class="search-wrapper">
-                <input type="text" name="q" placeholder="Search the web..." required value="{{ query if query else '' }}">
-                <button type="submit">Search</button>
+                <input type="text" id="searchInput" name="q" placeholder="Search the web..." required value="{{ query if query else '' }}" oninput="toggleClearBtn()">
+                <button type="button" class="clear-btn" id="clearBtn" onclick="clearSearch()" title="Clear">×</button>
+                <button type="submit" class="search-btn">Search</button>
             </div>
         </form>
         
@@ -252,6 +317,53 @@ HTML_TEMPLATE = """
             </div>
         {% endif %}
     </div>
+
+    <script>
+        // 1. Theme Logic
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const sunIcon = document.getElementById('sun-icon');
+            const moonIcon = document.getElementById('moon-icon');
+
+            if (currentTheme === 'light') {
+                body.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                sunIcon.style.display = 'none';
+                moonIcon.style.display = 'block';
+            } else {
+                body.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                sunIcon.style.display = 'block';
+                moonIcon.style.display = 'none';
+            }
+        }
+
+        // Load saved theme on startup
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            document.body.setAttribute('data-theme', 'light');
+            document.getElementById('sun-icon').style.display = 'block';
+            document.getElementById('moon-icon').style.display = 'none';
+        }
+
+        // 2. Clear Button Logic
+        function toggleClearBtn() {
+            const input = document.getElementById('searchInput');
+            const btn = document.getElementById('clearBtn');
+            btn.style.display = input.value ? 'block' : 'none';
+        }
+
+        function clearSearch() {
+            const input = document.getElementById('searchInput');
+            input.value = '';
+            input.focus();
+            toggleClearBtn();
+        }
+
+        // Initialize button state
+        toggleClearBtn();
+    </script>
 </body>
 </html>
 """
