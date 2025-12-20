@@ -16,14 +16,14 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. UI Template (Updated 'source' to 'src' to avoid conflict)
+# 2. UI Template
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OnGo | Fast Search</title>
+    <title>OnGo | Global Search</title>
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         :root { --bg-body: #0D1B2A; --bg-card: rgba(27, 38, 59, 0.6); --bg-input: rgba(255, 255, 255, 0.08); --text-main: #E0E1DD; --text-muted: #AAB3C0; --accent-sand: #B3AF8F; --accent-blue: #415A77; --border: rgba(255, 255, 255, 0.05); --font-main: 'Quicksand', sans-serif; }
@@ -73,7 +73,7 @@ HTML_TEMPLATE = """
                     </div>
                 {% endfor %}
                 {% if not results %}
-                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;"><p class="snippet">No results found.</p></div>
+                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;"><p class="snippet">No results found on the web. Try a broader term.</p></div>
                 {% endif %}
             </div>
         {% endif %}
@@ -102,8 +102,7 @@ def search():
         query = request.args.get('q', '').lower().strip()
         start_time = time.time()
         final_results = []
-        # Logic variable stays 'source'
-        source = "Internal DB"
+        source_label = "Scanning..." # Default state
         web_results = []
 
         if query:
@@ -114,13 +113,16 @@ def search():
                         "title": url, "link": url, 
                         "desc": ":: Internal Database Match", "type": "internal"
                     })
+                source_label = "Internal DB"
 
             # 2. Web Search (Primary: DuckDuckGo)
+            # Only try web if we have few results or want global search
             try:
                 url = "https://html.duckduckgo.com/html/"
                 payload = {'q': query}
+                # Real browser headers to avoid blocks
                 headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36"
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
                 }
                 response = requests.post(url, data=payload, headers=headers, timeout=5)
                 
@@ -131,7 +133,7 @@ def search():
                     if found_items:
                         count = 0
                         for result in found_items:
-                            if count >= 9: break 
+                            if count >= 8: break 
                             link_tag = result.find('a', class_='result__a')
                             snippet_tag = result.find('a', class_='result__snippet')
                             if link_tag:
@@ -142,22 +144,28 @@ def search():
                                     "type": "web"
                                 })
                                 count += 1
-                        source = "Live Web"
+                        if web_results:
+                            source_label = "Live Web"
             except Exception as e:
                 print(f"DDG Error: {e}")
 
-            # 3. FALBACK: Wikipedia
-            if not web_results:
+            # 3. Fallback: Wikipedia (with Headers)
+            # Force Wikipedia if other results are empty
+            if not web_results and not final_results:
                 try:
                     wiki_url = "https://en.wikipedia.org/w/api.php"
                     params = {
                         "action": "opensearch",
                         "search": query,
-                        "limit": 9,
+                        "limit": 10,
                         "namespace": 0,
                         "format": "json"
                     }
-                    wiki_resp = requests.get(wiki_url, params=params, timeout=5).json()
+                    # IMPORTANT: Wiki requires a User-Agent or it blocks you
+                    wiki_headers = {
+                        "User-Agent": "OnGoSearch/1.0 (contact@ongo.com)" 
+                    }
+                    wiki_resp = requests.get(wiki_url, params=params, headers=wiki_headers, timeout=5).json()
                     
                     if len(wiki_resp) == 4 and wiki_resp[1]:
                         titles = wiki_resp[1]
@@ -170,17 +178,14 @@ def search():
                                 "desc": descs[i] if descs[i] else "Read full article on Wikipedia...",
                                 "type": "wiki"
                             })
-                        source = "Wikipedia (Backup)"
+                        source_label = "Wikipedia (Global)"
                 except Exception as e:
                     print(f"Wiki Error: {e}")
             else:
                 final_results.extend(web_results)
 
         duration = round((time.time() - start_time) * 1000, 2)
-        
-        # --- THE FIX IS HERE ---
-        # Changed 'source=source' to 'src=source' to prevent argument collision
-        return render_template_string(HTML_TEMPLATE, query=query, results=final_results, time=duration, src=source)
+        return render_template_string(HTML_TEMPLATE, query=query, results=final_results, time=duration, src=source_label)
 
     except Exception as e:
         error_msg = traceback.format_exc()
