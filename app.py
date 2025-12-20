@@ -2,9 +2,8 @@ from flask import Flask, request, render_template_string
 import json
 import time
 import os
-import requests
-from bs4 import BeautifulSoup
 import traceback
+from duckduckgo_search import DDGS
 
 app = Flask(__name__)
 
@@ -44,7 +43,6 @@ HTML_TEMPLATE = """
         .result-card:hover { transform: translateY(-4px); overflow: visible; z-index: 10; }
         .web-result { border-top: 4px solid var(--accent-sand); }
         .internal-result { border-top: 4px solid var(--accent-blue); }
-        .wiki-result { border-top: 4px solid #fff; }
         a.result-link { font-family: var(--font-main); font-weight: 700; font-size: 1.15rem; color: var(--text-main); text-decoration: none; margin-bottom: 8px; line-height: 1.3; display: block; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         a.result-link:hover { white-space: normal; word-break: break-all; overflow: visible; color: var(--accent-sand); background: var(--bg-body); z-index: 20; position: relative; }
         p.snippet { color: var(--text-muted); line-height: 1.5; font-size: 0.9rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
@@ -67,13 +65,13 @@ HTML_TEMPLATE = """
             <p class="stats">Found results for "<b>{{ query }}</b>" ({{ time }} ms) via {{ src }}</p>
             <div class="results">
                 {% for res in results %}
-                    <div class="result-card {{ 'web-result' if res.type == 'web' else ('wiki-result' if res.type == 'wiki' else 'internal-result') }}">
+                    <div class="result-card {{ 'web-result' if res.type == 'web' else 'internal-result' }}">
                         <a href="{{ res.link }}" class="result-link" target="_blank">{{ res.title }}</a>
                         <p class="snippet">{{ res.desc }}</p>
                     </div>
                 {% endfor %}
                 {% if not results %}
-                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;"><p class="snippet">No results found on the web. Try a broader term.</p></div>
+                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;"><p class="snippet">No results found (Web access may be blocked by provider).</p></div>
                 {% endif %}
             </div>
         {% endif %}
@@ -102,8 +100,7 @@ def search():
         query = request.args.get('q', '').lower().strip()
         start_time = time.time()
         final_results = []
-        source_label = "Scanning..." # Default state
-        web_results = []
+        source_label = "Scanning..." 
 
         if query:
             # 1. Internal DB
@@ -115,74 +112,53 @@ def search():
                     })
                 source_label = "Internal DB"
 
-            # 2. Web Search (Primary: DuckDuckGo)
-            # Only try web if we have few results or want global search
-            try:
-                url = "https://html.duckduckgo.com/html/"
-                payload = {'q': query}
-                # Real browser headers to avoid blocks
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                }
-                response = requests.post(url, data=payload, headers=headers, timeout=5)
-                
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    found_items = soup.find_all('div', class_='result')
-                    
-                    if found_items:
-                        count = 0
-                        for result in found_items:
-                            if count >= 8: break 
-                            link_tag = result.find('a', class_='result__a')
-                            snippet_tag = result.find('a', class_='result__snippet')
-                            if link_tag:
-                                web_results.append({
-                                    "title": link_tag.get_text(),
-                                    "link": link_tag['href'],
-                                    "desc": snippet_tag.get_text() if snippet_tag else "Click to read more...",
+            # 2. DuckDuckGo (Lite Mode - Harder to Block)
+            if len(final_results) < 5:
+                try:
+                    with DDGS() as ddgs:
+                        # backend='lite' is lighter and often bypasses API rate limits
+                        ddg_results = list(ddgs.text(query, region='wt-wt', safesearch='off', timelimit='y', backend='lite', max_results=8))
+                        if ddg_results:
+                            for item in ddg_results:
+                                final_results.append({
+                                    "title": item.get('title'),
+                                    "link": item.get('href'),
+                                    "desc": item.get('body', 'No description available.'),
                                     "type": "web"
                                 })
-                                count += 1
-                        if web_results:
-                            source_label = "Live Web"
-            except Exception as e:
-                print(f"DDG Error: {e}")
+                            source_label = "Global Web (DDG)"
+                except Exception as e:
+                    print(f"DDG Error: {e}")
 
-            # 3. Fallback: Wikipedia (with Headers)
-            # Force Wikipedia if other results are empty
-            if not web_results and not final_results:
+            # 3. Last Resort: Wikipedia (with Heavy Headers)
+            if not final_results:
+                import requests
                 try:
-                    wiki_url = "https://en.wikipedia.org/w/api.php"
-                    params = {
-                        "action": "opensearch",
-                        "search": query,
-                        "limit": 10,
-                        "namespace": 0,
-                        "format": "json"
+                    # Mimic a real Chrome browser on Windows
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Accept': 'application/json'
                     }
-                    # IMPORTANT: Wiki requires a User-Agent or it blocks you
-                    wiki_headers = {
-                        "User-Agent": "OnGoSearch/1.0 (contact@ongo.com)" 
-                    }
-                    wiki_resp = requests.get(wiki_url, params=params, headers=wiki_headers, timeout=5).json()
+                    wiki_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=8&namespace=0&format=json"
+                    response = requests.get(wiki_url, headers=headers, timeout=5)
                     
-                    if len(wiki_resp) == 4 and wiki_resp[1]:
-                        titles = wiki_resp[1]
-                        descs = wiki_resp[2]
-                        links = wiki_resp[3]
-                        for i in range(len(titles)):
-                            final_results.append({
-                                "title": titles[i],
-                                "link": links[i],
-                                "desc": descs[i] if descs[i] else "Read full article on Wikipedia...",
-                                "type": "wiki"
-                            })
-                        source_label = "Wikipedia (Global)"
+                    if response.status_code == 200:
+                        data = response.json()
+                        if len(data) > 1 and data[1]:
+                            titles = data[1]
+                            descs = data[2]
+                            links = data[3]
+                            for i in range(len(titles)):
+                                final_results.append({
+                                    "title": titles[i],
+                                    "link": links[i],
+                                    "desc": descs[i] if descs[i] else "Wikipedia Article",
+                                    "type": "web"
+                                })
+                            source_label = "Wikipedia (Global)"
                 except Exception as e:
                     print(f"Wiki Error: {e}")
-            else:
-                final_results.extend(web_results)
 
         duration = round((time.time() - start_time) * 1000, 2)
         return render_template_string(HTML_TEMPLATE, query=query, results=final_results, time=duration, src=source_label)
