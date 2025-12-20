@@ -2,9 +2,8 @@ from flask import Flask, request, render_template_string
 import json
 import time
 import os
-import requests
 import traceback
-import random
+from googlesearch import search as gsearch
 
 app = Flask(__name__)
 
@@ -16,46 +15,67 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. UI Template (Same clean UI)
+# 2. UI Template (Restored SVG Icons + OnGo. Logo)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OnGo | Global Search</title>
+    <title>OnGo. | Global Search</title>
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg-body: #0D1B2A; --bg-card: rgba(27, 38, 59, 0.6); --bg-input: rgba(255, 255, 255, 0.08); --text-main: #E0E1DD; --text-muted: #AAB3C0; --accent-sand: #B3AF8F; --accent-blue: #415A77; --border: rgba(255, 255, 255, 0.05); --font-main: 'Quicksand', sans-serif; }
-        [data-theme="light"] { --bg-body: #F0F2F5; --bg-card: #FFFFFF; --bg-input: #FFFFFF; --text-main: #1B263B; --text-muted: #5C677D; --accent-sand: #B3AF8F; --accent-blue: #A0AEC0; --border: rgba(0, 0, 0, 0.05); }
+        :root { --bg-body: #0D1B2A; --bg-card: rgba(27, 38, 59, 0.6); --bg-input: rgba(255, 255, 255, 0.08); --text-main: #E0E1DD; --text-muted: #AAB3C0; --accent-sand: #B3AF8F; --accent-blue: #415A77; --border: rgba(255, 255, 255, 0.05); --font-main: 'Quicksand', sans-serif; --shadow: rgba(0,0,0,0.2); }
+        [data-theme="light"] { --bg-body: #F0F2F5; --bg-card: #FFFFFF; --bg-input: #FFFFFF; --text-main: #1B263B; --text-muted: #5C677D; --accent-sand: #B3AF8F; --accent-blue: #A0AEC0; --border: rgba(0, 0, 0, 0.05); --shadow: rgba(0,0,0,0.08); }
         * { box-sizing: border-box; }
         body { background-color: var(--bg-body); color: var(--text-main); font-family: var(--font-main); min-height: 100vh; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: {{ 'flex-start' if query else 'center' }}; padding-top: {{ '40px' if query else '0' }}; padding-bottom: {{ '0' if query else '25vh' }}; transition: background-color 0.3s ease, color 0.3s ease; }
-        .theme-toggle { position: absolute; top: 20px; right: 20px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 50%; cursor: pointer; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; z-index: 100; }
+        
+        /* Restored Theme Toggle */
+        .theme-toggle { position: absolute; top: 20px; right: 20px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 50%; cursor: pointer; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; z-index: 100; box-shadow: 0 4px 10px var(--shadow); transition: transform 0.2s; }
+        .theme-toggle:hover { transform: scale(1.1); }
+        .theme-toggle svg { width: 20px; height: 20px; fill: currentColor; }
+
+        /* Updated Logo: OnGo. */
         h1 { font-family: var(--font-main); font-size: 3.5rem; margin: 0 0 30px 0; letter-spacing: -1px; text-align: center; font-weight: 700; }
         .logo-link { text-decoration: none; color: var(--text-main); }
         .logo-link span { font-weight: 700; color: var(--accent-sand); }
+
         .container { width: 90%; max-width: 1000px; display: flex; flex-direction: column; align-items: center; }
-        .search-wrapper { background: var(--bg-input); padding: 6px 15px 6px 6px; border-radius: 50px; display: flex; align-items: center; width: 100%; max-width: 600px; border: 1px solid var(--border); position: relative; }
+        .search-wrapper { background: var(--bg-input); padding: 6px 15px 6px 6px; border-radius: 50px; display: flex; align-items: center; width: 100%; max-width: 600px; border: 1px solid var(--border); position: relative; box-shadow: 0 4px 15px var(--shadow); }
         input { background: transparent; border: none; color: var(--text-main); font-size: 1.1rem; padding: 14px 15px; width: 100%; font-family: var(--font-main); font-weight: 500; outline: none; }
-        .search-btn { background-color: var(--accent-sand); color: var(--bg-dark); border: none; border-radius: 40px; padding: 12px 28px; font-family: var(--font-main); font-weight: 700; font-size: 1rem; cursor: pointer; margin-left: 5px; }
+        .search-btn { background-color: var(--accent-sand); color: var(--bg-dark); border: none; border-radius: 40px; padding: 12px 28px; font-family: var(--font-main); font-weight: 700; font-size: 1rem; cursor: pointer; margin-left: 5px; transition: transform 0.2s; }
+        .search-btn:hover { transform: scale(1.05); }
+        
         .stats { align-self: flex-start; margin: 20px 0 15px 0; color: var(--text-muted); font-size: 0.9rem; font-weight: 500; width: 100%; max-width: 1000px; }
         .results { width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; padding-bottom: 50px; }
-        .result-card { background: var(--bg-card); padding: 20px; border-radius: 16px; border: 1px solid var(--border); transition: transform 0.2s ease; text-align: left; display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative; }
-        .result-card:hover { transform: translateY(-4px); overflow: visible; z-index: 10; }
+        
+        .result-card { background: var(--bg-card); padding: 20px; border-radius: 16px; border: 1px solid var(--border); transition: transform 0.2s ease; text-align: left; display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative; box-shadow: 0 2px 5px var(--shadow); }
+        .result-card:hover { transform: translateY(-4px); overflow: visible; z-index: 10; box-shadow: 0 10px 20px var(--shadow); }
+        
         .web-result { border-top: 4px solid var(--accent-sand); }
         .internal-result { border-top: 4px solid var(--accent-blue); }
         .wiki-result { border-top: 4px solid #fff; }
+        
         a.result-link { font-family: var(--font-main); font-weight: 700; font-size: 1.15rem; color: var(--text-main); text-decoration: none; margin-bottom: 8px; line-height: 1.3; display: block; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        a.result-link:hover { white-space: normal; word-break: break-all; overflow: visible; color: var(--accent-sand); background: var(--bg-body); z-index: 20; position: relative; }
+        a.result-link:hover { white-space: normal; word-break: break-all; overflow: visible; color: var(--accent-sand); background: var(--bg-body); z-index: 20; position: relative; border-radius: 4px; padding: 2px; }
         p.snippet { color: var(--text-muted); line-height: 1.5; font-size: 0.9rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+        
         .clear-btn { background: transparent; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0 10px; display: none; line-height: 1; }
         input:not(:placeholder-shown) + .clear-btn { display: block; }
     </style>
 </head>
 <body>
-    <button class="theme-toggle" onclick="toggleTheme()">🌗</button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Switch Theme">
+        <svg id="sun-icon" viewBox="0 0 24 24" style="display: none;">
+            <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 9c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-14c.55 0 1 .45 1 1v2c0 .55-.45 1-1 1s-1-.45-1-1V3c0-.55.45-1 1-1zm0 18c.55 0 1 .45 1 1v2c0 .55-.45 1-1 1s-1-.45-1-1v-2c0-.55.45-1 1-1zm10-9c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1s.45-1 1-1h2c.55 0 1 .45 1 1zm-18 0c0 .55-.45 1-1 1H2c-.55 0-1-.45-1-1s.45-1 1-1h2c.55 0 1 .45 1 1zm14.85-6.85l1.41 1.41c.39.39.39 1.02 0 1.41-.39.39-1.02.39-1.41 0l-1.41-1.41c-.39-.39-.39-1.02 0-1.41.39-.39 1.02-.39 1.41 0zm-12.72 12.72l1.41 1.41c.39.39.39 1.02 0 1.41-.39.39-1.02.39-1.41 0l-1.41-1.41c-.39-.39-.39-1.02 0-1.41.39-.39 1.02-.39 1.41 0zm12.72 0l-1.41 1.41c-.39.39-1.02.39-1.41 0-.39-.39-.39-1.02 0-1.41l1.41-1.41c.39-.39 1.02-.39 1.41 0 .39.39.39 1.02 0 1.41zm-12.72-12.72l-1.41 1.41c-.39.39-1.02.39-1.41 0-.39-.39-.39-1.02 0-1.41l1.41-1.41c.39-.39 1.02-.39 1.41 0 .39.39.39 1.02 0 1.41z"/>
+        </svg>
+        <svg id="moon-icon" viewBox="0 0 24 24">
+            <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.03 0-5.5-2.47-5.5-5.5 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/>
+        </svg>
+    </button>
+
     <div class="container">
-        <h1><a href="/" class="logo-link">On<span>Go</span></a></h1>
+        <h1><a href="/" class="logo-link">On<span>Go.</span></a></h1>
         <form action="/search" method="get" style="width: 100%; display: flex; justify-content: center;">
             <div class="search-wrapper">
                 <input type="text" id="searchInput" name="q" placeholder="Search the web..." required value="{{ query if query else '' }}" oninput="toggleClearBtn()">
@@ -73,7 +93,7 @@ HTML_TEMPLATE = """
                     </div>
                 {% endfor %}
                 {% if not results %}
-                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;"><p class="snippet">No results found. Try a different term.</p></div>
+                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;"><p class="snippet">No results found. The web might be busy.</p></div>
                 {% endif %}
             </div>
         {% endif %}
@@ -81,12 +101,28 @@ HTML_TEMPLATE = """
     <script>
         function toggleTheme() {
             const body = document.body;
-            body.setAttribute('data-theme', body.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
-            localStorage.setItem('theme', body.getAttribute('data-theme'));
+            const currentTheme = body.getAttribute('data-theme');
+            const sunIcon = document.getElementById('sun-icon');
+            const moonIcon = document.getElementById('moon-icon');
+            if (currentTheme === 'light') {
+                body.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                sunIcon.style.display = 'none'; moonIcon.style.display = 'block';
+            } else {
+                body.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                sunIcon.style.display = 'block'; moonIcon.style.display = 'none';
+            }
         }
-        if (localStorage.getItem('theme') === 'light') document.body.setAttribute('data-theme', 'light');
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            document.body.setAttribute('data-theme', 'light');
+            document.getElementById('sun-icon').style.display = 'block';
+            document.getElementById('moon-icon').style.display = 'none';
+        }
         function toggleClearBtn() { document.getElementById('clearBtn').style.display = document.getElementById('searchInput').value ? 'block' : 'none'; }
         function clearSearch() { document.getElementById('searchInput').value = ''; toggleClearBtn(); }
+        toggleClearBtn();
     </script>
 </body>
 </html>
@@ -114,39 +150,30 @@ def search():
                     })
                 source_label = "Internal DB"
 
-            # 2. Public SearXNG API (Replaces Blocked DDG)
-            # This hits a public instance that aggregates Google/Bing/DDG results
+            # 2. Real Google Search (using googlesearch-python library)
             if len(final_results) < 5:
                 try:
-                    # List of reliable public instances to try (if one is busy, we can swap)
-                    # We use 'searx.be' as it is generally reliable for JSON API
-                    searx_url = "https://searx.be/search"
-                    params = {
-                        "q": query,
-                        "format": "json",
-                        "categories": "general",
-                        "language": "en-US"
-                    }
-                    # Timeout set to 3 seconds so it doesn't hang if the server is busy
-                    resp = requests.get(searx_url, params=params, timeout=3)
+                    # Fetches 7 results. 'advanced=True' gets title/desc/url
+                    web_gen = gsearch(query, num_results=7, advanced=True)
+                    count = 0
+                    for item in web_gen:
+                        final_results.append({
+                            "title": item.title,
+                            "link": item.url,
+                            "desc": item.description if item.description else "Click to view page...",
+                            "type": "web"
+                        })
+                        count += 1
+                        if count >= 7: break
                     
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        if 'results' in data:
-                            for item in data['results'][:8]: # Top 8 results
-                                final_results.append({
-                                    "title": item.get('title'),
-                                    "link": item.get('url'),
-                                    "desc": item.get('content', 'No description available.'),
-                                    "type": "web"
-                                })
-                            if final_results:
-                                source_label = "Global Web (SearXNG)"
+                    if final_results:
+                        source_label = "Global Web"
                 except Exception as e:
-                    print(f"SearXNG Error: {e}")
+                    print(f"Google Search Error: {e}")
 
-            # 3. Last Resort: Wikipedia (If SearXNG fails)
+            # 3. Last Resort: Wikipedia (If Google blocks)
             if not final_results:
+                import requests
                 try:
                     headers = {'User-Agent': 'OnGoSearch/1.0'}
                     wiki_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=8&namespace=0&format=json"
