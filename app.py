@@ -1,14 +1,10 @@
 from flask import Flask, request, render_template_string
 import json
-import time
 import os
-import traceback
-from duckduckgo_search import DDGS
-from functools import lru_cache # The secret weapon for stability
 
 app = Flask(__name__)
 
-# 1. Load Internal Index
+# 1. Load Internal Index (Keeps your custom feature)
 INDEX_FILE = "inverted_index.json"
 if os.path.exists(INDEX_FILE):
     with open(INDEX_FILE, 'r', encoding='utf-8') as f:
@@ -16,7 +12,7 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. UI Template (Your "OnGo." branding)
+# 2. UI Template (Your Dark Mode Design + Google Widget)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -26,118 +22,89 @@ HTML_TEMPLATE = """
     <title>OnGo. | Global Search</title>
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg-body: #0D1B2A; --bg-card: rgba(27, 38, 59, 0.6); --bg-input: rgba(255, 255, 255, 0.08); --text-main: #E0E1DD; --text-muted: #AAB3C0; --accent-sand: #B3AF8F; --accent-blue: #415A77; --border: rgba(255, 255, 255, 0.05); --font-main: 'Quicksand', sans-serif; --shadow: rgba(0,0,0,0.2); }
-        [data-theme="light"] { --bg-body: #F0F2F5; --bg-card: #FFFFFF; --bg-input: #FFFFFF; --text-main: #1B263B; --text-muted: #5C677D; --accent-sand: #B3AF8F; --accent-blue: #A0AEC0; --border: rgba(0, 0, 0, 0.05); --shadow: rgba(0,0,0,0.08); }
+        :root { --bg-body: #0D1B2A; --bg-card: rgba(27, 38, 59, 0.6); --text-main: #E0E1DD; --text-muted: #AAB3C0; --accent-sand: #B3AF8F; --border: rgba(255, 255, 255, 0.05); --font-main: 'Quicksand', sans-serif; }
         * { box-sizing: border-box; }
-        body { background-color: var(--bg-body); color: var(--text-main); font-family: var(--font-main); min-height: 100vh; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: {{ 'flex-start' if query else 'center' }}; padding-top: {{ '40px' if query else '0' }}; padding-bottom: {{ '0' if query else '25vh' }}; transition: background-color 0.3s ease, color 0.3s ease; }
-        .theme-toggle { position: absolute; top: 20px; right: 20px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 50%; cursor: pointer; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; z-index: 100; box-shadow: 0 4px 10px var(--shadow); transition: transform 0.2s; }
-        .theme-toggle:hover { transform: scale(1.1); }
-        .theme-toggle svg { width: 20px; height: 20px; fill: currentColor; }
-        h1 { font-family: var(--font-main); font-size: 3.5rem; margin: 0 0 30px 0; letter-spacing: -1px; text-align: center; font-weight: 700; }
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: var(--font-main); min-height: 100vh; margin: 0; display: flex; flex-direction: column; align-items: center; padding-top: 40px; }
+        
+        /* LOGO */
+        h1 { font-size: 3.5rem; margin: 0 0 30px 0; letter-spacing: -1px; font-weight: 700; }
         .logo-link { text-decoration: none; color: var(--text-main); }
-        .logo-link span { font-weight: 700; color: var(--accent-sand); }
-        .container { width: 90%; max-width: 1000px; display: flex; flex-direction: column; align-items: center; }
-        .search-wrapper { background: var(--bg-input); padding: 6px 15px 6px 6px; border-radius: 50px; display: flex; align-items: center; width: 100%; max-width: 600px; border: 1px solid var(--border); position: relative; box-shadow: 0 4px 15px var(--shadow); }
+        .logo-link span { color: var(--accent-sand); }
+
+        /* SEARCH BAR */
+        .container { width: 90%; max-width: 800px; display: flex; flex-direction: column; align-items: center; }
+        .search-wrapper { background: rgba(255, 255, 255, 0.08); padding: 6px 15px 6px 6px; border-radius: 50px; display: flex; align-items: center; width: 100%; border: 1px solid var(--border); box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
         input { background: transparent; border: none; color: var(--text-main); font-size: 1.1rem; padding: 14px 15px; width: 100%; font-family: var(--font-main); font-weight: 500; outline: none; }
-        .search-btn { background-color: var(--accent-sand); color: var(--bg-dark); border: none; border-radius: 40px; padding: 12px 28px; font-family: var(--font-main); font-weight: 700; font-size: 1rem; cursor: pointer; margin-left: 5px; transition: transform 0.2s; }
+        .search-btn { background-color: var(--accent-sand); color: #0D1B2A; border: none; border-radius: 40px; padding: 12px 28px; font-weight: 700; font-size: 1rem; cursor: pointer; transition: transform 0.2s; }
         .search-btn:hover { transform: scale(1.05); }
-        .stats { align-self: flex-start; margin: 20px 0 15px 0; color: var(--text-muted); font-size: 0.9rem; font-weight: 500; width: 100%; max-width: 1000px; }
-        .results { width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; padding-bottom: 50px; }
-        .result-card { background: var(--bg-card); padding: 20px; border-radius: 16px; border: 1px solid var(--border); transition: transform 0.2s ease; text-align: left; display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative; box-shadow: 0 2px 5px var(--shadow); }
-        .result-card:hover { transform: translateY(-4px); overflow: visible; z-index: 10; box-shadow: 0 10px 20px var(--shadow); }
-        .web-result { border-top: 4px solid var(--accent-sand); }
-        .internal-result { border-top: 4px solid var(--accent-blue); }
-        .cached-tag { font-size: 0.75rem; color: var(--accent-sand); background: rgba(179, 175, 143, 0.1); padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 5px; }
-        a.result-link { font-family: var(--font-main); font-weight: 700; font-size: 1.15rem; color: var(--text-main); text-decoration: none; margin-bottom: 8px; line-height: 1.3; display: block; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        a.result-link:hover { white-space: normal; word-break: break-all; overflow: visible; color: var(--accent-sand); background: var(--bg-body); z-index: 20; position: relative; border-radius: 4px; padding: 2px; }
-        p.snippet { color: var(--text-muted); line-height: 1.5; font-size: 0.9rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-        .clear-btn { background: transparent; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0 10px; display: none; line-height: 1; }
-        input:not(:placeholder-shown) + .clear-btn { display: block; }
+
+        /* RESULTS AREA */
+        .results-container { width: 100%; margin-top: 30px; min-height: 400px; text-align: left; }
+        
+        /* Custom Internal Results Card */
+        .internal-card { background: var(--bg-card); padding: 15px 20px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid var(--accent-sand); border: 1px solid var(--border); }
+        .internal-card a { color: var(--text-main); font-weight: 700; text-decoration: none; font-size: 1.2rem; display: block; margin-bottom: 5px; }
+        .internal-card p { color: var(--text-muted); margin: 0; font-size: 0.9rem; }
+
+        /* GOOGLE WIDGET CUSTOMIZATION (Force Dark Mode Integration) */
+        .gsc-control-cse { background-color: transparent !important; border: none !important; padding: 0 !important; }
+        .gsc-webResult.gsc-result { background-color: var(--bg-card) !important; border-radius: 12px; margin-bottom: 15px; padding: 20px !important; border: 1px solid var(--border) !important; box-shadow: none !important; }
+        .gsc-webResult.gsc-result:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.2) !important; transition: transform 0.2s; }
+        
+        /* Title Styling */
+        .gs-title { text-decoration: none !important; height: auto !important; }
+        .gs-title a { color: var(--text-main) !important; font-family: var(--font-main) !important; font-size: 1.2rem !important; font-weight: 700 !important; text-decoration: none !important; }
+        .gs-title b { color: var(--accent-sand) !important; }
+        
+        /* Snippet Styling */
+        .gs-snippet { color: var(--text-muted) !important; font-family: var(--font-main) !important; font-size: 0.95rem !important; line-height: 1.5 !important; }
+        
+        /* Remove Google Junk */
+        .gsc-url-top, .gsc-url-bottom { display: none !important; } 
+        .gsc-adBlock { display: none !important; }
+        
+        /* Pagination */
+        .gsc-cursor-box { margin-top: 20px; text-align: center; }
+        .gsc-cursor-page { color: var(--text-main) !important; background: rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 6px; margin: 0 5px; text-decoration: none !important; display: inline-block; }
+        .gsc-cursor-current-page { background-color: var(--accent-sand) !important; color: #0D1B2A !important; font-weight: bold; }
     </style>
 </head>
 <body>
-    <button class="theme-toggle" onclick="toggleTheme()" title="Switch Theme">
-        <svg id="sun-icon" viewBox="0 0 24 24" style="display: none;"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 9c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-14c.55 0 1 .45 1 1v2c0 .55-.45 1-1 1s-1-.45-1-1V3c0-.55.45-1 1-1zm0 18c.55 0 1 .45 1 1v2c0 .55-.45 1-1 1s-1-.45-1-1v-2c0-.55.45-1 1-1zm10-9c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1s.45-1 1-1h2c.55 0 1 .45 1 1zm-18 0c0 .55-.45 1-1 1H2c-.55 0-1-.45-1-1s.45-1 1-1h2c.55 0 1 .45 1 1zm14.85-6.85l1.41 1.41c.39.39.39 1.02 0 1.41-.39.39-1.02.39-1.41 0l-1.41-1.41c-.39-.39-.39-1.02 0-1.41.39-.39 1.02-.39 1.41 0zm-12.72 12.72l1.41 1.41c.39.39.39 1.02 0 1.41-.39.39-1.02.39-1.41 0l-1.41-1.41c-.39-.39-.39-1.02 0-1.41.39-.39 1.02-.39 1.41 0zm12.72 0l-1.41 1.41c-.39.39-1.02.39-1.41 0-.39-.39-.39-1.02 0-1.41l1.41-1.41c.39-.39 1.02-.39 1.41 0 .39.39.39 1.02 0 1.41zm-12.72-12.72l-1.41 1.41c-.39.39-1.02.39-1.41 0-.39-.39-.39-1.02 0-1.41l1.41-1.41c.39-.39 1.02-.39 1.41 0 .39.39.39 1.02 0 1.41z"/></svg>
-        <svg id="moon-icon" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.03 0-5.5-2.47-5.5-5.5 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
-    </button>
     <div class="container">
         <h1><a href="/" class="logo-link">On<span>Go.</span></a></h1>
-        <form action="/search" method="get" style="width: 100%; display: flex; justify-content: center;">
+        
+        <form action="/search" method="get" style="width: 100%;">
             <div class="search-wrapper">
-                <input type="text" id="searchInput" name="q" placeholder="Search the web..." required value="{{ query if query else '' }}" oninput="toggleClearBtn()">
-                <button type="button" class="clear-btn" id="clearBtn" onclick="clearSearch()">×</button>
+                <input type="text" name="q" placeholder="Search the web..." required value="{{ query if query else '' }}">
                 <button type="submit" class="search-btn">Search</button>
             </div>
         </form>
-        {% if query %}
-            <p class="stats">Found results for "<b>{{ query }}</b>" ({{ time }} ms) via {{ src }}</p>
-            <div class="results">
-                {% for res in results %}
-                    <div class="result-card {{ 'web-result' if res.type == 'web' else 'internal-result' }}">
-                        {% if res.cached %}<span class="cached-tag">⚡ Cached</span>{% endif %}
-                        <a href="{{ res.link }}" class="result-link" target="_blank">{{ res.title }}</a>
-                        <p class="snippet">{{ res.desc }}</p>
+
+        <div class="results-container">
+            {% if internal_results %}
+                <div style="margin-bottom: 20px;">
+                {% for res in internal_results %}
+                    <div class="internal-card">
+                        <a href="{{ res }}" target="_blank">{{ res }}</a>
+                        <p>:: Internal Database Match</p>
                     </div>
                 {% endfor %}
-                {% if not results %}
-                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;"><p class="snippet">No results found. Network heavily congested.</p></div>
-                {% endif %}
-            </div>
-        {% endif %}
+                </div>
+            {% endif %}
+
+            {% if query %}
+                <script async src="https://cse.google.com/cse.js?cx=64411374afe3a4b42"></script>
+                
+                <div class="gcse-searchresults-only" 
+                     data-queryParameterName="q" 
+                     data-linkTarget="_blank">
+                </div>
+            {% endif %}
+        </div>
     </div>
-    <script>
-        function toggleTheme() {
-            const body = document.body;
-            const currentTheme = body.getAttribute('data-theme');
-            const sunIcon = document.getElementById('sun-icon');
-            const moonIcon = document.getElementById('moon-icon');
-            if (currentTheme === 'light') {
-                body.setAttribute('data-theme', 'dark');
-                localStorage.setItem('theme', 'dark');
-                sunIcon.style.display = 'none'; moonIcon.style.display = 'block';
-            } else {
-                body.setAttribute('data-theme', 'light');
-                localStorage.setItem('theme', 'light');
-                sunIcon.style.display = 'block'; moonIcon.style.display = 'none';
-            }
-        }
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'light') {
-            document.body.setAttribute('data-theme', 'light');
-            document.getElementById('sun-icon').style.display = 'block';
-            document.getElementById('moon-icon').style.display = 'none';
-        }
-        function toggleClearBtn() { document.getElementById('clearBtn').style.display = document.getElementById('searchInput').value ? 'block' : 'none'; }
-        function clearSearch() { document.getElementById('searchInput').value = ''; toggleClearBtn(); }
-        toggleClearBtn();
-    </script>
 </body>
 </html>
 """
-
-# 3. CACHED SEARCH FUNCTION (The "Future-Proof" Part)
-# We store the last 128 searches in RAM.
-# If you search "python" again, it returns the result INSTANTLY without hitting the network.
-@lru_cache(maxsize=128)
-def cached_web_search(query):
-    try:
-        results = []
-        # 'lite' backend is the HTML-only version. Harder to block, very fast.
-        with DDGS() as ddgs:
-            # We fetch 8 results. region='wt-wt' means "World-wide".
-            ddg_gen = ddgs.text(query, region='wt-wt', safesearch='off', timelimit='y', backend='lite', max_results=8)
-            for r in ddg_gen:
-                results.append({
-                    "title": r['title'],
-                    "link": r['href'],
-                    "desc": r['body'],
-                    "type": "web",
-                    "cached": False
-                })
-        return results
-    except Exception as e:
-        print(f"Web Search Error: {e}")
-        return []
 
 @app.route('/')
 def home():
@@ -145,68 +112,15 @@ def home():
 
 @app.route('/search')
 def search():
-    try:
-        query = request.args.get('q', '').lower().strip()
-        start_time = time.time()
-        final_results = []
-        source_label = "Scanning..." 
+    query = request.args.get('q', '').strip()
+    
+    # Check Internal Index for matches
+    internal_results = []
+    if query and query.lower() in inverted_index:
+        internal_results = inverted_index[query.lower()]
 
-        if query:
-            # 1. Internal DB
-            if query in inverted_index:
-                for url in inverted_index[query]:
-                    final_results.append({
-                        "title": url, "link": url, 
-                        "desc": ":: Internal Database Match", "type": "internal"
-                    })
-                source_label = "Internal DB"
-
-            # 2. Cached Web Search
-            if len(final_results) < 5:
-                # Check cache first!
-                web_data = cached_web_search(query)
-                
-                # If we got data, is it from cache or fresh?
-                # The lru_cache handles the storage, we just mark it for UI.
-                is_cached = cached_web_search.cache_info().hits > 0
-                
-                if web_data:
-                    # If it's a hit, mark items as cached for UI
-                    # Note: Deep copy isn't strictly needed for display but good practice
-                    for item in web_data:
-                        # We create a new dict to avoid modifying the cached one in place repeatedly
-                        res_item = item.copy() 
-                        # Only show "Cached" badge if we actually hit the cache this time
-                        # (simplified logic: we assume it's fresh unless we know otherwise)
-                        final_results.append(res_item)
-                    
-                    source_label = "Global Web"
-
-            # 3. Last Resort: Wikipedia (If Web Search fails/blocks)
-            if not final_results:
-                import requests
-                try:
-                    headers = {'User-Agent': 'OnGoSearch/1.0'}
-                    wiki_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=8&namespace=0&format=json"
-                    response = requests.get(wiki_url, headers=headers, timeout=2)
-                    if response.status_code == 200:
-                        data = response.json()
-                        if len(data) > 1 and data[1]:
-                            titles = data[1]; descs = data[2]; links = data[3]
-                            for i in range(len(titles)):
-                                final_results.append({
-                                    "title": titles[i], "link": links[i],
-                                    "desc": descs[i] if descs[i] else "Wikipedia Article", "type": "wiki"
-                                })
-                            source_label = "Wikipedia (Backup)"
-                except: pass
-
-        duration = round((time.time() - start_time) * 1000, 2)
-        return render_template_string(HTML_TEMPLATE, query=query, results=final_results, time=duration, src=source_label)
-
-    except Exception as e:
-        error_msg = traceback.format_exc()
-        return f"<h1>CRITICAL ERROR:</h1><pre>{error_msg}</pre>"
+    # Render template (Google Script handles the rest)
+    return render_template_string(HTML_TEMPLATE, query=query, internal_results=internal_results)
 
 if __name__ == '__main__':
     app.run(debug=True)
