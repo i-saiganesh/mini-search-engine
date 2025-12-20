@@ -2,8 +2,9 @@ from flask import Flask, request, render_template_string
 import json
 import time
 import os
+import requests
 import traceback
-from duckduckgo_search import DDGS
+import random
 
 app = Flask(__name__)
 
@@ -15,7 +16,7 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. UI Template
+# 2. UI Template (Same clean UI)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -43,6 +44,7 @@ HTML_TEMPLATE = """
         .result-card:hover { transform: translateY(-4px); overflow: visible; z-index: 10; }
         .web-result { border-top: 4px solid var(--accent-sand); }
         .internal-result { border-top: 4px solid var(--accent-blue); }
+        .wiki-result { border-top: 4px solid #fff; }
         a.result-link { font-family: var(--font-main); font-weight: 700; font-size: 1.15rem; color: var(--text-main); text-decoration: none; margin-bottom: 8px; line-height: 1.3; display: block; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         a.result-link:hover { white-space: normal; word-break: break-all; overflow: visible; color: var(--accent-sand); background: var(--bg-body); z-index: 20; position: relative; }
         p.snippet { color: var(--text-muted); line-height: 1.5; font-size: 0.9rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
@@ -65,13 +67,13 @@ HTML_TEMPLATE = """
             <p class="stats">Found results for "<b>{{ query }}</b>" ({{ time }} ms) via {{ src }}</p>
             <div class="results">
                 {% for res in results %}
-                    <div class="result-card {{ 'web-result' if res.type == 'web' else 'internal-result' }}">
+                    <div class="result-card {{ 'web-result' if res.type == 'web' else ('wiki-result' if res.type == 'wiki' else 'internal-result') }}">
                         <a href="{{ res.link }}" class="result-link" target="_blank">{{ res.title }}</a>
                         <p class="snippet">{{ res.desc }}</p>
                     </div>
                 {% endfor %}
                 {% if not results %}
-                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;"><p class="snippet">No results found (Web access may be blocked by provider).</p></div>
+                    <div class="result-card" style="grid-column: 1 / -1; text-align: center;"><p class="snippet">No results found. Try a different term.</p></div>
                 {% endif %}
             </div>
         {% endif %}
@@ -103,7 +105,7 @@ def search():
         source_label = "Scanning..." 
 
         if query:
-            # 1. Internal DB
+            # 1. Internal DB (Priority O(1))
             if query in inverted_index:
                 for url in inverted_index[query]:
                     final_results.append({
@@ -112,36 +114,43 @@ def search():
                     })
                 source_label = "Internal DB"
 
-            # 2. DuckDuckGo (Lite Mode - Harder to Block)
+            # 2. Public SearXNG API (Replaces Blocked DDG)
+            # This hits a public instance that aggregates Google/Bing/DDG results
             if len(final_results) < 5:
                 try:
-                    with DDGS() as ddgs:
-                        # backend='lite' is lighter and often bypasses API rate limits
-                        ddg_results = list(ddgs.text(query, region='wt-wt', safesearch='off', timelimit='y', backend='lite', max_results=8))
-                        if ddg_results:
-                            for item in ddg_results:
+                    # List of reliable public instances to try (if one is busy, we can swap)
+                    # We use 'searx.be' as it is generally reliable for JSON API
+                    searx_url = "https://searx.be/search"
+                    params = {
+                        "q": query,
+                        "format": "json",
+                        "categories": "general",
+                        "language": "en-US"
+                    }
+                    # Timeout set to 3 seconds so it doesn't hang if the server is busy
+                    resp = requests.get(searx_url, params=params, timeout=3)
+                    
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if 'results' in data:
+                            for item in data['results'][:8]: # Top 8 results
                                 final_results.append({
                                     "title": item.get('title'),
-                                    "link": item.get('href'),
-                                    "desc": item.get('body', 'No description available.'),
+                                    "link": item.get('url'),
+                                    "desc": item.get('content', 'No description available.'),
                                     "type": "web"
                                 })
-                            source_label = "Global Web (DDG)"
+                            if final_results:
+                                source_label = "Global Web (SearXNG)"
                 except Exception as e:
-                    print(f"DDG Error: {e}")
+                    print(f"SearXNG Error: {e}")
 
-            # 3. Last Resort: Wikipedia (with Heavy Headers)
+            # 3. Last Resort: Wikipedia (If SearXNG fails)
             if not final_results:
-                import requests
                 try:
-                    # Mimic a real Chrome browser on Windows
-                    headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                        'Accept-Language': 'en-US,en;q=0.9',
-                        'Accept': 'application/json'
-                    }
+                    headers = {'User-Agent': 'OnGoSearch/1.0'}
                     wiki_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=8&namespace=0&format=json"
-                    response = requests.get(wiki_url, headers=headers, timeout=5)
+                    response = requests.get(wiki_url, headers=headers, timeout=3)
                     
                     if response.status_code == 200:
                         data = response.json()
@@ -154,9 +163,9 @@ def search():
                                     "title": titles[i],
                                     "link": links[i],
                                     "desc": descs[i] if descs[i] else "Wikipedia Article",
-                                    "type": "web"
+                                    "type": "wiki"
                                 })
-                            source_label = "Wikipedia (Global)"
+                            source_label = "Wikipedia (Backup)"
                 except Exception as e:
                     print(f"Wiki Error: {e}")
 
