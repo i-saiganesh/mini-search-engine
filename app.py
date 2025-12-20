@@ -15,7 +15,7 @@ if os.path.exists(INDEX_FILE):
 else:
     inverted_index = {}
 
-# 2. The Robust UI
+# 2. The Exact Same UI (No Design Changes)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -66,10 +66,9 @@ HTML_TEMPLATE = """
             display: flex;
             flex-direction: column;
             align-items: center;
-            /* Logic: If query exists, go to top. If not, center. */
             justify-content: {{ 'flex-start' if query else 'center' }}; 
             padding-top: {{ '40px' if query else '0' }};
-            padding-bottom: {{ '50px' if query else '20vh' }};
+            padding-bottom: {{ '0' if query else '25vh' }};
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
@@ -218,7 +217,7 @@ HTML_TEMPLATE = """
 
         .web-result { border-top: 4px solid var(--accent-sand); }
         .internal-result { border-top: 4px solid var(--accent-blue); }
-        .wiki-result { border-top: 4px solid #fff; } /* Special style for Backup results */
+        .wiki-result { border-top: 4px solid #fff; } 
 
         .result-card:hover {
             transform: translateY(-4px);
@@ -302,7 +301,7 @@ HTML_TEMPLATE = """
                 
                 {% if not results %}
                     <div class="result-card" style="grid-column: 1 / -1; text-align: center;">
-                        <p class="snippet">No results found. The external engines might be busy. Try again.</p>
+                        <p class="snippet">No results found. Please check your spelling or internet connection.</p>
                     </div>
                 {% endif %}
             </div>
@@ -361,6 +360,9 @@ def search():
     start_time = time.time()
     final_results = []
     source = "Internal DB"
+    
+    # Store web results separately to verify if they actually exist
+    web_results = []
 
     if query:
         # 1. Internal DB
@@ -372,43 +374,46 @@ def search():
                 })
 
         # 2. Web Search (Primary: DuckDuckGo)
-        web_results = []
         try:
             url = "https://html.duckduckgo.com/html/"
             payload = {'q': query}
-            # Enhanced Headers to avoid blocking
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Referer": "https://duckduckgo.com/"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36"
             }
             response = requests.post(url, data=payload, headers=headers, timeout=5)
             
+            # CRITICAL CHECK: Status must be 200 AND we must find actual results
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
-                count = 0
-                for result in soup.find_all('div', class_='result'):
-                    if count >= 9: break 
-                    link_tag = result.find('a', class_='result__a')
-                    snippet_tag = result.find('a', class_='result__snippet')
-                    if link_tag:
-                        web_results.append({
-                            "title": link_tag.get_text(),
-                            "link": link_tag['href'],
-                            "desc": snippet_tag.get_text() if snippet_tag else "Click to read more...",
-                            "type": "web"
-                        })
-                        count += 1
+                found_items = soup.find_all('div', class_='result')
+                
+                # Only process if we actually found result divs
+                if found_items:
+                    count = 0
+                    for result in found_items:
+                        if count >= 9: break 
+                        link_tag = result.find('a', class_='result__a')
+                        snippet_tag = result.find('a', class_='result__snippet')
+                        if link_tag:
+                            web_results.append({
+                                "title": link_tag.get_text(),
+                                "link": link_tag['href'],
+                                "desc": snippet_tag.get_text() if snippet_tag else "Click to read more...",
+                                "type": "web"
+                            })
+                            count += 1
+                    source = "Live Web"
         except Exception as e:
             print(f"DDG Error: {e}")
 
-        # 3. Fallback (Backup: Wikipedia) if DDG fails or returns 0 results
+        # 3. FALBACK: Run Wikipedia ONLY if DDG failed (web_results is empty)
         if not web_results:
             try:
                 # Query Wikipedia OpenSearch API
                 wiki_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=9&namespace=0&format=json"
                 wiki_resp = requests.get(wiki_url, timeout=5).json()
                 # wiki_resp structure: [query, [titles], [descriptions], [links]]
-                if len(wiki_resp) == 4:
+                if len(wiki_resp) == 4 and wiki_resp[1]:
                     titles = wiki_resp[1]
                     descs = wiki_resp[2]
                     links = wiki_resp[3]
@@ -424,7 +429,6 @@ def search():
                 print(f"Wiki Error: {e}")
         else:
             final_results.extend(web_results)
-            source = "Live Web"
 
     duration = round((time.time() - start_time) * 1000, 2)
     return render_template_string(HTML_TEMPLATE, query=query, results=final_results, time=duration, source=source)
